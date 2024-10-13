@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -62,7 +63,9 @@ class QTrainer:
         self.criterion = nn.MSELoss()
 
     def train_step(self, state, action, reward, next_state, done):
-        state = torch.tensor(state, dtype=torch.float, device='cuda')
+        state = np.array(state)  # Convert list to numpy.ndarray
+        state = torch.tensor(state, dtype=torch.float, device='cuda')  # Convert numpy.ndarray to tensor
+        next_state = np.array(next_state)  # Convert list to numpy.ndarray
         next_state = torch.tensor(next_state, dtype=torch.float, device='cuda')
         action = torch.tensor(action, dtype=torch.long, device='cuda')
         reward = torch.tensor(reward, dtype=torch.float, device='cuda')

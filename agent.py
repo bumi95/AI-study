@@ -1,6 +1,7 @@
 import torch
 import random
 import numpy as np
+#import math
 from collections import deque
 from game import SnakeGameAI, Direction, Point
 from model import Linear_QNet, QTrainer
@@ -14,12 +15,12 @@ class Agent:
 
     def __init__(self):
         self.n_games = 0
-        self.epsilon = 0.8 # randomness
-        self.epsilon_decay = 0.995
-        self.epsilon_min = 0.001
+        self.epsilon = 0 # randomness
+        #self.epsilon_decay = 0.98
+        #self.epsilon_min = 0.01
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(11, 128, 3)
+        self.model = Linear_QNet(11, 256, 3)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
 
@@ -34,6 +35,8 @@ class Agent:
         dir_r = game.direction == Direction.RIGHT
         dir_u = game.direction == Direction.UP
         dir_d = game.direction == Direction.DOWN
+        
+        #distance_to_food = math.sqrt((game.food.x - head.x) ** 2 + (game.food.y - head.y) ** 2)
 
         state = [
             # Danger straight
@@ -65,6 +68,8 @@ class Agent:
             game.food.x > game.head.x,  # food right
             game.food.y < game.head.y,  # food up
             game.food.y > game.head.y  # food down
+            
+            #distance_to_food
             ]
 
         return np.array(state, dtype=int)
@@ -80,22 +85,22 @@ class Agent:
 
         states, actions, rewards, next_states, dones = zip(*mini_sample)
         self.trainer.train_step(states, actions, rewards, next_states, dones)
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+        #if self.epsilon > self.epsilon_min:
+        #    self.epsilon *= self.epsilon_decay
         #for state, action, reward, nexrt_state, done in mini_sample:
         #    self.trainer.train_step(state, action, reward, next_state, done)
 
     def train_short_memory(self, state, action, reward, next_state, done):
         self.trainer.train_step(state, action, reward, next_state, done)
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+        #if self.epsilon > self.epsilon_min:
+        #    self.epsilon *= self.epsilon_decay
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
-        #self.epsilon = 80 - self.n_games
+        self.epsilon = 100 - self.n_games
         final_move = [0,0,0]
-        if np.random.rand() < self.epsilon:
-        #if random.randint(0, 200) < self.epsilon:
+        #if np.random.rand() < self.epsilon:
+        if random.randint(0, 200) < self.epsilon:
             move = random.randint(0, 2)
             final_move[move] = 1
         else:

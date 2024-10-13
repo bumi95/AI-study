@@ -1,5 +1,6 @@
 import pygame
 import random
+import math
 from enum import Enum
 from collections import namedtuple
 import numpy as np
@@ -24,7 +25,7 @@ BLUE2 = (0, 100, 255)
 BLACK = (0,0,0)
 
 BLOCK_SIZE = 20
-SPEED = 40
+SPEED = 200
 
 class SnakeGameAI:
 
@@ -69,9 +70,15 @@ class SnakeGameAI:
                 pygame.quit()
                 quit()
         
+        # Calculate the distance to food before the move
+        distance_before_move = math.sqrt((self.food.x - self.head.x) ** 2 + (self.food.y - self.head.y) ** 2)
+        
         # 2. move
         self._move(action) # update the head
         self.snake.insert(0, self.head)
+        
+        # Calculate the distance to food after the move
+        distance_after_move = math.sqrt((self.food.x - self.head.x) ** 2 + (self.food.y - self.head.y) ** 2)
         
         # 3. check if game over
         reward = 0
@@ -79,6 +86,10 @@ class SnakeGameAI:
         if self.is_collision() or self.frame_iteration > 100*len(self.snake):
             game_over = True
             reward = -10
+            # 길이에 따른 패널티 추가
+            tmp = len(self.snake) // 10
+            if tmp > 0:
+                reward -= tmp
             return reward, game_over, self.score
 
         # 4. place new food or just move
@@ -88,6 +99,12 @@ class SnakeGameAI:
             self._place_food()
         else:
             self.snake.pop()
+            
+        # Give a small reward or penalty based on the distance to food
+        if distance_after_move < distance_before_move:
+            reward = 1  # small reward for getting closer to the food
+        else:
+            reward = -2  # small penalty for getting farther from the food
         
         # 5. update ui and clock
         self._update_ui()
