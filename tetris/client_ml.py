@@ -33,7 +33,7 @@ class TetrisGameML(TetrisGame):
                 y -= 1
         
         if lines_cleared > 0:
-            self.score += GameConfig.SCORES[lines_cleared]
+            self.score += [0, 40, 100, 300, 1200][min(lines_cleared, 4)]
             # await self.send_lines_to_others(lines_cleared)  # 이 줄을 주석 처리 또는 제거
         
         return lines_cleared
@@ -87,7 +87,6 @@ class TetrisGameML(TetrisGame):
         
         :return: 현재 상태에 대한 보상 값
         """
-        # 보상 함수 개선
         reward = 0
 
         # 줄을 지울 때마다 보상
@@ -95,12 +94,23 @@ class TetrisGameML(TetrisGame):
         reward += lines_cleared * 10
 
         # 현재 피스가 바닥에 닿았을 때 보상
-        if self.current_piece['y'] + len(self.current_piece['shape']) >= GameConfig.GRID_HEIGHT:
+        if not self.is_valid_position(self.current_piece['shape'], self.current_piece['x'], self.current_piece['y'] + 1):
             reward += 1
 
         # 게임 오버 시 큰 패널티
         if self.game_over:
             reward -= 100
+
+        # 추가 보상: 현재 피스가 얼마나 높은 위치에 있는지 (낮을수록 좋음)
+        reward -= self.current_piece['y'] * 0.1
+
+        # 추가 보상: 현재 그리드의 높이 (낮을수록 좋음)
+        max_height = max((y for y, row in enumerate(self.grid) if any(row)), default=0)
+        reward -= max_height * 0.1
+
+        # 추가 보상: 현재 그리드의 구멍 수 (적을수록 좋음)
+        holes = sum(1 for x in range(GameConfig.GRID_WIDTH) for y in range(1, GameConfig.GRID_HEIGHT) if self.grid[y][x] is None and self.grid[y-1][x] is not None)
+        reward -= holes * 0.5
 
         return reward
 

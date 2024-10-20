@@ -286,7 +286,7 @@ class TetrisGame:
             return  # 웹소켓 연결이 없으면 메서드를 종료합니다.
         message = {
             "type": "send_lines",
-            "lines": lines_cleared
+            "num_lines": lines_cleared
         }
         await self.websocket.send(json.dumps(message))
 
@@ -464,7 +464,7 @@ class TetrisGame:
 
         if not self.is_valid_position(self.current_piece['shape'], self.current_piece['x'], self.current_piece['y']):
             self.running = False
-            logging.info("게임 오버: 새 조각을 놓을 공간이 없음")
+            #logging.info("게임 오버: 새 조각을 놓을 공간이 없음")
             return False
         return True
 

@@ -102,7 +102,7 @@ class TetrisServer:
             if data["type"] == "update_state":
                 self.game_states[client_id] = data["state"]
                 await self.notify_clients()
-            elif data["type"] == "insert_lines":
+            elif data["type"] == "send_lines":
                 await self.send_lines_to_others(client_id, data["num_lines"])
         except json.JSONDecodeError:
             logging.error(f"잘못된 JSON 형식: {message}")
