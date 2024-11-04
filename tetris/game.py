@@ -73,8 +73,8 @@ class TetrisGame:
         self.next_piece: Dict[str, Any] = self.new_piece()
         self.hold_piece: Dict[str, Any] = None
         self.score = 0
-        self.game_speed = 1000.0
-        self.drop_speed = 1000.0
+        self.game_speed = 1.0
+        self.drop_speed = 1.0
         self.drop_interval = 1.0 / self.drop_speed
         
         self.websocket = None
@@ -92,6 +92,7 @@ class TetrisGame:
         self.right_key_pressed = False
         self.last_move_time = time.time()
         self.move_delay = 0.2  # 이동 딜레이 (초) - 더 느리게 설정
+        self.block_merged = False
         
         self.calculate_sizes()
 
@@ -325,6 +326,7 @@ class TetrisGame:
             self.current_piece['y'] = new_y
             return True
         elif dy > 0:  # 아래로 이동 시 충돌한 경우
+            self.block_merged = True
             await self.lock_piece()
             return False
         return False

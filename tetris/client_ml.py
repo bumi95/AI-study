@@ -42,46 +42,37 @@ class TetrisGameML(TetrisGame):
         :return: 1차원 numpy 배열로 표현된 게임 상태
         """
         
-        # grid를 numpy 배열로 변환
+        # grid를 2D numpy 배열로 변환 (수정된 부분)
         grid_array = np.zeros((GameConfig.GRID_HEIGHT, GameConfig.GRID_WIDTH), dtype=np.float32)
         for y in range(GameConfig.GRID_HEIGHT):
             for x in range(GameConfig.GRID_WIDTH):
-                if self.grid[y][x]:
-                    grid_array[y][x] = 1.0  # 블록이 있는 경우 1로 설정
+                if self.grid[y][x]:  # None이 아닌 경우에만 1로 설정
+                    grid_array[y][x] = 1.0
         
         # 현재 조각의 상태를 표현
-        current_piece = np.zeros((4, GameConfig.GRID_WIDTH), dtype=np.float32)
-        if self.current_piece:  # current_piece가 None이 아닌 경우에만 처리
-            piece_height, piece_width = len(self.current_piece['shape']), len(self.current_piece['shape'][0])
+        current_piece_array = np.zeros_like(grid_array)
+        if self.current_piece:
+            shape = self.current_piece['shape']
+            x = self.current_piece['x']
+            y = self.current_piece['y']
             
-            for y in range(piece_height):
-                for x in range(piece_width):
-                    if self.current_piece['shape'][y][x]:
-                        grid_x, grid_y = self.current_piece['x'] + x, self.current_piece['y'] + y
-                        if 0 <= grid_x < GameConfig.GRID_WIDTH and 0 <= grid_y < 4:
-                            current_piece[grid_y, grid_x] = 1
-
-        # 다음 조각의 상태를 표현
-        next_piece = np.zeros((4, GameConfig.GRID_WIDTH), dtype=np.float32)
+            for i, row in enumerate(shape):
+                for j, cell in enumerate(row):
+                    if cell and 0 <= y+i < GameConfig.GRID_HEIGHT and 0 <= x+j < GameConfig.GRID_WIDTH:
+                        current_piece_array[y+i][x+j] = 1.0
+        
+        # 게임 보드와 현재 조각 상태를 합침
+        combined_grid = grid_array + current_piece_array
+        
+        # 다음 조각 정보를 원-핫 인코딩으로 표현
+        next_piece_array = np.zeros(len(GameConfig.SHAPES), dtype=np.float32)
         if self.next_piece:
-            piece_height, piece_width = len(self.next_piece['shape']), len(self.next_piece['shape'][0])
-            for y in range(piece_height):
-                for x in range(piece_width):
-                    if self.next_piece['shape'][y][x]:
-                        next_piece[y, x] = 1
-
-        # 보유 조각의 상태를 표현
-        hold_piece = np.zeros((4, GameConfig.GRID_WIDTH), dtype=np.float32)
-        if self.hold_piece:
-            piece_height, piece_width = len(self.hold_piece['shape']), len(self.hold_piece['shape'][0])
-            for y in range(piece_height):
-                for x in range(piece_width):
-                    if self.hold_piece['shape'][y][x]:
-                        hold_piece[y, x] = 1
-
-        # 게임 보드와 현재 조각 상태를 합쳐서 반환
-        state = np.vstack((grid_array, current_piece, next_piece, hold_piece))
-        return state.flatten()
+            next_piece_index = GameConfig.SHAPES.index(self.next_piece['shape'])
+            next_piece_array[next_piece_index] = 1.0
+        
+        # 최종 상태 벡터 생성
+        state = np.concatenate([combined_grid.flatten(), next_piece_array])
+        return state
 
     def get_reward(self) -> float:
         """
@@ -89,91 +80,30 @@ class TetrisGameML(TetrisGame):
         
         :return: 현재 상태에 대한 보상 값
         """
-        # 기본 보상: 제거한 라인 수와 점수
-        reward = self.lines_cleared * 100 + self.score * 0.1
         
-        # 게임 보드의 높이 보상
-        heights = [GameConfig.GRID_HEIGHT - next((y for y in range(GameConfig.GRID_HEIGHT) if self.grid[y][x]), GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH)]
-        max_height = max(heights)
-        height_reward = (GameConfig.GRID_HEIGHT - max_height) * 0.1
+        reward = 0
         
-        # 구멍 페널티
-        holes = sum(1 for x in range(GameConfig.GRID_WIDTH) for y in range(GameConfig.GRID_HEIGHT-1)
-                    if not self.grid[y][x] and self.grid[y+1][x])
-        hole_penalty = holes * 10
+        if self.lines_cleared > 0:
+            reward += (self.lines_cleared ** 2) * 100
+            self.lines_cleared = 0
         
-        # 표면 평탄도 보상
-        bumpiness = sum(abs(heights[i] - heights[i+1]) for i in range(len(heights)-1))
-        smoothness_reward = (GameConfig.GRID_WIDTH - bumpiness) * 0.1
-        
-        # 생존 시간 보상
-        #survival_reward = self.episode_steps * 0.01
-        
-        # 최종 보상 계산
-        reward += smoothness_reward - hole_penalty + height_reward
-        
-        # 게임 오버 페널티
         if not self.running:
-            reward -= 500
+            reward -= 1000
         
-        return max(reward, 0)  # 보상이 음수가 되지 않도록 함
-        '''
-        # 기본 보상: 제거한 라인 수와 점수
-        reward = 2**self.lines_cleared + self.score
-        
-        # 게임 보드의 높이 보상
-        #heights = [GameConfig.GRID_HEIGHT - next((y for y in range(GameConfig.GRID_HEIGHT) if self.grid[y][x]), GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH)]
-        #max_height = max(heights)
-        #height_reward = (GameConfig.GRID_HEIGHT - max_height) * 0.1
-        
-        # 게임 보드의 높이 패널티
-        heights = [GameConfig.GRID_HEIGHT - next((y for y in range(GameConfig.GRID_HEIGHT) if self.grid[y][x]), GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH)]
-        max_height = max(heights)
-        min_height = min(heights)
-        #height_penalty = max_height 
-        #reward -= height_penalty * 0.1
-        
-        # 구멍 페널티
-        holes = sum(1 for x in range(GameConfig.GRID_WIDTH) for y in range(GameConfig.GRID_HEIGHT-1)
-                    if not self.grid[y][x] and self.grid[y+1][x])
-        hole_penalty = holes * 0.1
-        #hole_penalty = holes
-        
-        # 표면 평탄도 보상
-        bumpiness = sum(abs(heights[i] - heights[i+1]) for i in range(len(heights)-1))
-        smoothness_reward = (GameConfig.GRID_WIDTH - bumpiness) * 0.1
-        
-        # 말이 바닥에 가까워질수록 작은 보상
-        piece_bottom_y = self.current_piece['y'] + len(self.current_piece['shape']) - 1
-        distance_to_bottom = GameConfig.GRID_HEIGHT - piece_bottom_y
-        proximity_reward = (GameConfig.GRID_HEIGHT - distance_to_bottom) * 0.05
-
-        height_difference = max_height - min_height
-        balance_penalty = height_difference * 0.1  # 높이 차이에 비례한 페널티
-        # 빈 공간 계산
-        empty_spaces = [sum(1 for y in range(GameConfig.GRID_HEIGHT) if not self.grid[y][x]) for x in range(GameConfig.GRID_WIDTH)]
-        max_empty_spaces = max(empty_spaces)
-        min_empty_spaces = min(empty_spaces)
-        empty_space_difference = max_empty_spaces - min_empty_spaces
-        empty_space_penalty = empty_space_difference * 0.1  # 빈 공간 차이에 비례한 페널티
-        
-        
-        # 최종 보상 계산
-        #reward += proximity_reward - balance_penalty - empty_space_penalty #hole_penalty
-        reward -= hole_penalty#proximity_reward#empty_space_penalty#balance_penalty
-        
-        # 말이 바닥에 닿으면 보상 추가
-        if piece_bottom_y >= GameConfig.GRID_HEIGHT - 1:
-            reward += 1
-        
-        # 게임 오버 페널티
-        if not self.running:
-            reward -= 50
-            #reward -= 500
+        if self.block_merged:
+            height = [GameConfig.GRID_HEIGHT - next((y for y in range(GameConfig.GRID_HEIGHT) if self.grid[y][x]), GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH)]
+            max_height = max(height)
+            #holes = sum(1 for x in range(GameConfig.GRID_WIDTH) for y in range(GameConfig.GRID_HEIGHT - 1) if self.grid[y][x] == 0 and self.grid[y+1][x] == 1)
+            holes = sum(1 for y in range(GameConfig.GRID_HEIGHT - max_height - 1, GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH) if self.grid[y][x] == 0)
+            #bumpiness = sum(abs(height[i] - height[i+1]) for i in range(len(height) - 1))
+            
+            #reward -= (max_height * 0.5)
+            reward -= (holes * 1.0)
+            #reward -= (bumpiness * 0.5)
+            self.block_merged = False
         
         return reward
-        #return max(reward, 0)  # 보상이 음수가 되지 않도록 함
-        '''
+    
     def reset(self) -> np.ndarray:
         """
         게임 상태를 초기화하고 초기 상태를 반환합니다.
