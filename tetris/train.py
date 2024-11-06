@@ -7,17 +7,15 @@ sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 from client_ml import TetrisGameML
 import asyncio
 import torch.multiprocessing as mp
-from torch.distributions import Categorical
+#from torch.distributions import Categorical
 
-def worker(worker_id, global_agent, num_episodes, input_shape, action_size, max_columns):
+def worker(num_episodes):
     pygame.init()
-    column = worker_id % max_columns
-    row = worker_id // max_columns
-    os.environ['SDL_VIDEO_WINDOW_POS'] = f"{(column * 600) + 30},{(row * 600) + 30}"
+    os.environ['SDL_VIDEO_WINDOW_POS'] = f"{30},{30}"
     game = TetrisGameML()
-    local_agent = A3CAgent(input_shape, action_size)
+    local_agent = A3CAgent(game.get_state().shape[0], len(game.action_space))
     
-    local_agent.model.load_state_dict(global_agent.model.state_dict())
+    #local_agent.model.load_state_dict(global_agent.model.state_dict())
     
     record = 0
     record_reward = 0
@@ -43,25 +41,24 @@ def worker(worker_id, global_agent, num_episodes, input_shape, action_size, max_
             
             game.draw_game()
             pygame.display.flip()
-            pygame.time.wait(20)
+            #pygame.time.wait(20)
         
-        local_agent.update(trajectory, global_agent.model, total_reward, record_reward)
+        local_agent.update(trajectory, total_reward, record_reward)
         #global_agent.update_global_model(local_agent)
         
         print(f"총 보상 : {total_reward}")
-        
-        if total_reward > record_reward:
-            record_reward = total_reward
-            local_agent.model.load_state_dict(global_agent.model.state_dict())
-        
-        if total_score > record:
-            record = total_score
-            
-            print(f"워커 {worker_id}, 에피소드 {episode + 1}, 총 보상: {total_reward}, 스코어: {total_score}, 최고 스코어: {record}")
+
+        if total_score > 0:
+            if total_score > record:
+                record = total_score
+                local_agent.save_model()
+            print(f"에피소드 {episode + 1}, 총 보상: {total_reward}, 스코어: {total_score}, 최고 스코어: {record}")
     pygame.quit()
     
     
-def train(num_episodes=1000, num_workers=2):
+def train(num_episodes=10000):
+    worker(num_episodes)
+    '''
     screen_height = 600
     monitor_width = 1920
     sum = 0
@@ -69,7 +66,7 @@ def train(num_episodes=1000, num_workers=2):
     while sum < monitor_width:
         sum += screen_height
         max_columns += 1
-    
+
     game = TetrisGameML()
     input_size = game.get_state().shape[0]
     action_size = len(game.action_space)
@@ -85,7 +82,8 @@ def train(num_episodes=1000, num_workers=2):
         p.join()
         
     global_agent.save_model()
+    '''
     
 if __name__ == "__main__":
-    mp.set_start_method("spawn")
+    #mp.set_start_method("spawn")
     train()

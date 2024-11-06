@@ -1,10 +1,5 @@
-import pygame
-import asyncio
 import numpy as np
-from typing import List, Dict, Any, Tuple
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))  # 상위 폴더를 파이썬 경로에 추가
+from typing import Dict, Tuple
 from game import TetrisGame, GameConfig
 import logging
 
@@ -88,9 +83,9 @@ class TetrisGameML(TetrisGame):
             self.lines_cleared = 0
         
         # 2. 게임 오버 페널티
-        if not self.running:
-            reward -= 2000  # 페널티 증가
-            return reward  # 게임 오버시 즉시 반환
+        #if not self.running:
+        #    reward -= 2000  # 페널티 증가
+        #    return reward  # 게임 오버시 즉시 반환
         
         # 3. 높이 관련 계산
         height = [GameConfig.GRID_HEIGHT - next((y for y in range(GameConfig.GRID_HEIGHT) 
@@ -100,11 +95,11 @@ class TetrisGameML(TetrisGame):
         avg_height = sum(height) / len(height)
         
         # 4. 구멍과 평탄도 계산
-        holes = 0
-        covered_holes = 0  # 블록으로 덮인 구멍
+        #holes = 0
+        #covered_holes = 0  # 블록으로 덮인 구멍
         bumpiness = 0
-        wells = 0  # 깊은 웰 감지
-        
+        #wells = 0  # 깊은 웰 감지
+        '''
         # 각 열에 대해 분석
         for x in range(GameConfig.GRID_WIDTH):
             # 구멍 계산
@@ -127,40 +122,44 @@ class TetrisGameML(TetrisGame):
                 well_depth = min(left_height, right_height) - current_height
                 if well_depth > 2:  # 깊이가 2 이상인 웰에 대해 페널티
                     wells += well_depth
-        
+        '''
         # 평탄도 계산 (인접한 열들의 높이 차이)
         for i in range(len(height) - 1):
-            bumpiness += abs(height[i] - height[i+1])
+            if bumpiness < abs(height[i] - height[i+1]):
+                bumpiness = abs(height[i] - height[i+1])
         
         # 5. 블록이 놓였을 때의 추가 평가
         if self.block_merged:
-            height_diff = sum(abs(h1 - h2) for h1, h2 in zip(height, self.previous_height))
+            height_diff = max_height - max(self.previous_height)
             reward -= height_diff * 2
             
             self.previous_height = height
             # 새로운 블록이 높은 곳에 놓였을 때 추가 페널티
-            if max_height > GameConfig.GRID_HEIGHT * 0.7:  # 70% 이상 높이
-                reward -= (max_height ** 1.5)
+            #if max_height > GameConfig.GRID_HEIGHT * 0.7:  # 70% 이상 높이
+            #    reward -= (max_height ** 1.5)
             
             # 구멍을 만들었을 때 큰 페널티
-            reward -= (covered_holes * 30)  # 덮인 구멍에 대한 큰 페널티
-            reward -= (holes * 10)  # 일반 구멍에 대한 페널티
+            #reward -= (covered_holes * 30)  # 덮인 구멍에 대한 큰 페널티
+            holes = sum(1 for y in range(GameConfig.GRID_HEIGHT - max_height - 1, GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH) if self.grid[y][x] == 0)
+            reward -= holes * 0.1 # 일반 구멍에 대한 페널티
+            if bumpiness >= 5:
+                reward -= bumpiness * 10
+            else:
+                reward += (GameConfig.GRID_HEIGHT - bumpiness) * 10
             
+            if max_height < GameConfig.GRID_HEIGHT * 0.5:  # 낮은 높이 유지
+                reward += 100
             # 웰에 대한 페널티
-            reward -= (wells * 8)
+            #reward -= (wells * 8)
             
             self.block_merged = False
         
         # 6. 일반적인 상태 평가
-        reward -= (max_height * 2)  # 최대 높이에 대한 페널티
-        reward -= (avg_height * 1)  # 평균 높이에 대한 페널티
-        reward -= (bumpiness * 2)   # 평탄도에 대한 페널티
+        #reward -= (max_height * 2)  # 최대 높이에 대한 페널티
+        #reward -= (avg_height * 1)  # 평균 높이에 대한 페널티
+        #reward -= (bumpiness * 2)   # 평탄도에 대한 페널티
         
         # 7. 좋은 상태에 대한 보상
-        if max_height < GameConfig.GRID_HEIGHT * 0.3:  # 낮은 높이 유지
-            reward += 10
-        if bumpiness < 5:  # 매우 평탄한 상태
-            reward += 20
         
         return reward
     

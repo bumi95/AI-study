@@ -32,7 +32,7 @@ class A3CAgent:
         
     def get_action(self, state):
         if self.training:
-            self.model.train()
+            #self.model.train()
             
             # 상태 전처리
             #if not isinstance(state, torch.Tensor):
@@ -72,7 +72,7 @@ class A3CAgent:
             self.total_steps += 1
             return action, log_prob, value
         else:
-            self.model.eval()
+            #self.model.eval()
             with torch.no_grad():
                 policy, value = self.model(state.to(self.device))
                 # 평가시에는 최적의 행동 선택
@@ -80,15 +80,20 @@ class A3CAgent:
                 return action, None, value
 
     
-    def update(self, trajectory, global_model, total_reward, best_reward):
-        self.model.train()
+    def update(self, trajectory, total_reward, best_reward):
+        #self.model.train()
+        
+        # 최소 트래젝토리 길이 확인
+        if len(trajectory) < 5:
+            return
         
         # 기존 GAE 계산
         log_probs = torch.stack([x[0] for x in trajectory]).to(self.device)
         values = torch.cat([x[1] for x in trajectory]).to(self.device)
         rewards = torch.tensor([x[2] for x in trajectory], dtype=torch.float32).to(self.device)
         
-        # 리워드 정규화 추가
+        # 리워드 클리핑 추가
+        rewards = torch.clamp(rewards, -10.0, 10.0)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
         
         # GAE 계산 개선
@@ -102,54 +107,53 @@ class A3CAgent:
             advantages.insert(0, gae)
         
         advantages = torch.tensor(advantages, dtype=torch.float32).to(self.device)
+        advantages = torch.clamp(advantages, -10.0, 10.0)  # 어드밴티지 클리핑
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
-        # 손실 계산 개선
-        actor_loss = -(log_probs * advantages.detach()).mean()
+        # PPO 스타일의 클리핑 추가
+        old_log_probs = log_probs.detach()
+        ratio = torch.exp(log_probs - old_log_probs)
+        clip_ratio = 0.2
+        #clipped_ratio = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio)
+        
+        # PPO 손실 계산 개선
+        surr1 = ratio * advantages.detach()
+        surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * advantages.detach()
+        actor_loss = -torch.min(surr1, surr2).mean()
+        
         critic_loss = 0.5 * (values - rewards).pow(2).mean()
         policy_entropy = (-log_probs * torch.exp(log_probs)).mean()
         
-        # 손실 가중치 조정
-        total_loss = actor_loss + 0.5 * critic_loss - self.entropy_coef * policy_entropy
+        improvement_ratio = total_reward / (best_reward + 1e-8) 
+        
+        # 손실 가중치 동적 조정
+        critic_weight = min(1.0, max(0.2, 0.5 + (improvement_ratio - 1.0)))
+        total_loss = actor_loss + critic_weight * critic_loss - self.entropy_coef * policy_entropy
         
         # 그래디언트 계산 및 클리핑
         self.optimizer.zero_grad()
         total_loss.backward()
+        
+        # 그래디언트 노이즈 추가 (선택적)
+        for param in self.model.parameters():
+            if param.grad is not None:
+                noise = torch.randn_like(param.grad) * 0.01
+                param.grad.add_(noise)
+                
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
         self.optimizer.step()
         
-        # 글로벌 모델 업데이트 조건 완화
-        improvement_ratio = total_reward / (best_reward + 1e-8)
-        update_probability = min(improvement_ratio, 1.0)  # 확률적 업데이트
+        # 성능 기반 학습률 및 엔트로피 조정 개선
+        if improvement_ratio > 1.1:  # 10% 이상 향상
+            self.entropy_coef = max(0.005, self.entropy_coef * 0.98)
+            new_lr = min(self.optimizer.param_groups[0]['lr'] * 1.02, 0.001)
+        elif improvement_ratio < 0.9:  # 10% 이상 저하
+            self.entropy_coef = min(0.05, self.entropy_coef * 1.02)
+            new_lr = max(self.optimizer.param_groups[0]['lr'] * 0.98, 0.00001)
+        else:
+            new_lr = self.optimizer.param_groups[0]['lr']
         
-        if torch.rand(1).item() < update_probability:
-            # 부분적 모델 업데이트 (Soft Update)
-            tau = 0.1  # 업데이트 비율
-            for global_param, local_param in zip(global_model.parameters(), self.model.parameters()):
-                global_param.data.copy_(
-                    global_param.data * (1.0 - tau) + local_param.data * tau
-                )
-            
-            # 동적 하이퍼파라미터 조정
-            if improvement_ratio > 1.2:  # 20% 이상 향상
-                self.entropy_coef = max(0.01, self.entropy_coef * 0.95)  # 탐색 감소
-                new_lr = min(self.optimizer.param_groups[0]['lr'] * 1.1, 0.001)
-                self.optimizer.param_groups[0]['lr'] = new_lr
-            elif improvement_ratio < 0.8:  # 성능 저하
-                self.entropy_coef = min(0.05, self.entropy_coef * 1.05)  # 탐색 증가
-                new_lr = max(self.optimizer.param_groups[0]['lr'] * 0.95, 0.00001)
-                self.optimizer.param_groups[0]['lr'] = new_lr
-                #logging.info(f"엔트로피 계수 증가: {self.entropy_coef:.4f}")
-            
-            # 3. 경험 리플레이 우선순위 조정
-            #priority = min(improvement_ratio, 2.0)  # 우선순위 상한 설정
-            #self.total_steps += 1
-            
-            # 4. 모델 체크포인트 저장
-            #if improvement_ratio > 1.5:  # 50% 이상의 큰 향상
-            #    self.save_checkpoint(f"checkpoint_improvement_{self.total_steps}.pth")
-            
-            #logging.info(f"성능 향상 감지: {improvement_ratio:.2f}배")
+        self.optimizer.param_groups[0]['lr'] = new_lr
         
     def save_model(self):
         model_dir = os.path.join(os.getcwd(), "model")
