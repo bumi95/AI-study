@@ -1,6 +1,6 @@
 #import numpy as np
 import pygame
-from test_agent import A3CAgent
+from agent import A3CAgent
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
@@ -30,6 +30,7 @@ def worker(worker_id, global_agent, num_episodes, input_shape, action_size, max_
         total_score = 0
         
         while not done:
+            state = local_agent.preprocess_state(state, 800, 600)
             action, log_prob, value = local_agent.get_action(state)
             game_action = game.action_space[action.item()]
             next_state, reward, done, info = asyncio.run(game.step(game_action))
@@ -42,7 +43,7 @@ def worker(worker_id, global_agent, num_episodes, input_shape, action_size, max_
             
             game.draw_game()
             pygame.display.flip()
-            pygame.time.wait(50)
+            pygame.time.wait(20)
         
         local_agent.update(trajectory, global_agent.model, total_reward, record_reward)
         #global_agent.update_global_model(local_agent)
@@ -60,7 +61,7 @@ def worker(worker_id, global_agent, num_episodes, input_shape, action_size, max_
     pygame.quit()
     
     
-def train(num_episodes=1000, num_workers=5):
+def train(num_episodes=1000, num_workers=2):
     screen_height = 600
     monitor_width = 1920
     sum = 0

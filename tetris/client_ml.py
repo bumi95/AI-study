@@ -24,6 +24,7 @@ class TetrisGameML(TetrisGame):
         self.lines_cleared = 0  # 라인 제거 수를 추적하기 위한 변수 추가
         self.last_state = None
         self.episode_steps = 0
+        self.previous_height = np.zeros(GameConfig.GRID_WIDTH, dtype=np.float32)
 
     async def send_lines_to_others(self, lines_cleared):
         if self.multiplayer:
@@ -72,35 +73,94 @@ class TetrisGameML(TetrisGame):
         
         # 최종 상태 벡터 생성
         state = np.concatenate([combined_grid.flatten(), next_piece_array])
+        
         return state
 
     def get_reward(self) -> float:
         """
         현재 상태에 대한 보상을 계산합니다.
-        
-        :return: 현재 상태에 대한 보상 값
         """
-        
         reward = 0
         
+        # 1. 라인 클리어 보상 (기존보다 더 큰 보상)
         if self.lines_cleared > 0:
-            reward += (self.lines_cleared ** 2) * 100
+            reward += (self.lines_cleared ** 2) * 100  # 보상 증가
             self.lines_cleared = 0
         
+        # 2. 게임 오버 페널티
         if not self.running:
-            reward -= 1000
+            reward -= 2000  # 페널티 증가
+            return reward  # 게임 오버시 즉시 반환
         
-        if self.block_merged:
-            height = [GameConfig.GRID_HEIGHT - next((y for y in range(GameConfig.GRID_HEIGHT) if self.grid[y][x]), GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH)]
-            max_height = max(height)
-            #holes = sum(1 for x in range(GameConfig.GRID_WIDTH) for y in range(GameConfig.GRID_HEIGHT - 1) if self.grid[y][x] == 0 and self.grid[y+1][x] == 1)
-            holes = sum(1 for y in range(GameConfig.GRID_HEIGHT - max_height - 1, GameConfig.GRID_HEIGHT) for x in range(GameConfig.GRID_WIDTH) if self.grid[y][x] == 0)
-            #bumpiness = sum(abs(height[i] - height[i+1]) for i in range(len(height) - 1))
+        # 3. 높이 관련 계산
+        height = [GameConfig.GRID_HEIGHT - next((y for y in range(GameConfig.GRID_HEIGHT) 
+                 if self.grid[y][x]), GameConfig.GRID_HEIGHT) 
+                 for x in range(GameConfig.GRID_WIDTH)]
+        max_height = max(height)
+        avg_height = sum(height) / len(height)
+        
+        # 4. 구멍과 평탄도 계산
+        holes = 0
+        covered_holes = 0  # 블록으로 덮인 구멍
+        bumpiness = 0
+        wells = 0  # 깊은 웰 감지
+        
+        # 각 열에 대해 분석
+        for x in range(GameConfig.GRID_WIDTH):
+            # 구멍 계산
+            first_block = False
+            col_holes = 0
+            for y in range(GameConfig.GRID_HEIGHT):
+                if self.grid[y][x]:
+                    first_block = True
+                elif first_block:
+                    col_holes += 1
+                    if y > 0 and self.grid[y-1][x]:
+                        covered_holes += 1
+            holes += col_holes
             
-            #reward -= (max_height * 0.5)
-            reward -= (holes * 1.0)
-            #reward -= (bumpiness * 0.5)
+            # 웰 깊이 계산 (양쪽 벽 포함)
+            if x > 0 and x < GameConfig.GRID_WIDTH - 1:
+                left_height = height[x-1]
+                right_height = height[x+1]
+                current_height = height[x]
+                well_depth = min(left_height, right_height) - current_height
+                if well_depth > 2:  # 깊이가 2 이상인 웰에 대해 페널티
+                    wells += well_depth
+        
+        # 평탄도 계산 (인접한 열들의 높이 차이)
+        for i in range(len(height) - 1):
+            bumpiness += abs(height[i] - height[i+1])
+        
+        # 5. 블록이 놓였을 때의 추가 평가
+        if self.block_merged:
+            height_diff = sum(abs(h1 - h2) for h1, h2 in zip(height, self.previous_height))
+            reward -= height_diff * 2
+            
+            self.previous_height = height
+            # 새로운 블록이 높은 곳에 놓였을 때 추가 페널티
+            if max_height > GameConfig.GRID_HEIGHT * 0.7:  # 70% 이상 높이
+                reward -= (max_height ** 1.5)
+            
+            # 구멍을 만들었을 때 큰 페널티
+            reward -= (covered_holes * 30)  # 덮인 구멍에 대한 큰 페널티
+            reward -= (holes * 10)  # 일반 구멍에 대한 페널티
+            
+            # 웰에 대한 페널티
+            reward -= (wells * 8)
+            
             self.block_merged = False
+        
+        # 6. 일반적인 상태 평가
+        reward -= (max_height * 2)  # 최대 높이에 대한 페널티
+        reward -= (avg_height * 1)  # 평균 높이에 대한 페널티
+        reward -= (bumpiness * 2)   # 평탄도에 대한 페널티
+        
+        # 7. 좋은 상태에 대한 보상
+        if max_height < GameConfig.GRID_HEIGHT * 0.3:  # 낮은 높이 유지
+            reward += 10
+        if bumpiness < 5:  # 매우 평탄한 상태
+            reward += 20
         
         return reward
     

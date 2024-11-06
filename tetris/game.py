@@ -460,7 +460,7 @@ class TetrisGame:
                 await self.update_game_state()
                 self.draw_game()
                 # 프레임 속도 제어 (초당 60프레임으로 설정)
-                self.clock.tick(60)
+                #self.clock.tick(60)
 
                 if self.websocket and self.websocket.open:
                     await self.send_state()
@@ -640,4 +640,3 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"게임 실행 중 예외 발생: {e}", exc_info=True)
         sys.exit(1)
-

@@ -5,22 +5,33 @@ import torch.nn as nn
 class A3CModel(nn.Module):
     def __init__(self, input_shape, num_actions):
         super(A3CModel, self).__init__()
-        self.fc = nn.Sequential(
+        
+        # 특징 추출기 강화
+        self.feature_extractor = nn.Sequential(
             nn.Linear(input_shape, 512),
             nn.LayerNorm(512),
             nn.LeakyReLU(0.01),
             nn.Linear(512, 256),
             nn.LayerNorm(256),
-            nn.LeakyReLU(0.01),
+            nn.LeakyReLU(0.01)
+        )
+        
+        # 정책 네트워크
+        self.policy_net = nn.Sequential(
             nn.Linear(256, 128),
             nn.LayerNorm(128),
             nn.LeakyReLU(0.01),
-            nn.Dropout(p=0.3)
+            nn.Linear(128, num_actions)
         )
-        self.policy = nn.Linear(128, num_actions)
-        self.value = nn.Linear(128, 1)
         
-        # 가중치 초기화
+        # 가치 네트워크
+        self.value_net = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.LayerNorm(128),
+            nn.LeakyReLU(0.01),
+            nn.Linear(128, 1)
+        )
+        
         self._initialize_weights()
     
     def _initialize_weights(self):
@@ -31,7 +42,8 @@ class A3CModel(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        x = self.fc(x)
-        policy_dist = nn.Softmax(dim=-1)(self.policy(x))
-        value = self.value(x)
+        features = self.feature_extractor(x)
+        policy_logits = self.policy_net(features)
+        policy_dist = nn.Softmax(dim=-1)(policy_logits)
+        value = self.value_net(features)
         return policy_dist, value
