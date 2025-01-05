@@ -31,7 +31,7 @@ class CryptoDataset(Dataset):
         return sequence, target
 
 def create_dataloaders(data, seq_length, batch_size=32, train_split=0.8):
-    """트레이��/검증 데이터로더 생성"""
+    """트레이닝/검증 데이터로더 생성"""
     dataset = CryptoDataset(data, seq_length)
     
     # 데이터 분할
@@ -56,4 +56,4 @@ def create_dataloaders(data, seq_length, batch_size=32, train_split=0.8):
         shuffle=False
     )
     
-    return train_loader, val_loader 
+    return train_loader, val_loader

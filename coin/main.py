@@ -14,6 +14,8 @@ def calculate_rsi(prices, period=14):
 def preprocess_data(df):
     """데이터 전처리"""
     df = df.copy()
+    # close 컬럼을 float 타입으로 변환
+    df['close'] = df['close'].astype(float)
     df['returns'] = df['close'].pct_change()
     df['ma7'] = df['close'].rolling(window=7).mean()
     df['ma14'] = df['close'].rolling(window=14).mean()
@@ -22,8 +24,8 @@ def preprocess_data(df):
 
 def main():
     # API 키 설정
-    api_key = "YOUR_API_KEY"
-    api_secret = "YOUR_API_SECRET"
+    api_key = "xly7tpFQcyVU8dHIVbJpc9ty5Sq9dXPuLgs1Gh6lBMX126SHbAeUF528L8Azg5dI"
+    api_secret = "pGCSCtUrJKaYBs0DeiG7tf3ouQfL1NO8FNQ78v1kcBHwhHB95XRU8QqVIyJmoOIW"
     
     # 트레이더 초기화
     trader = BinanceTrader(api_key, api_secret)
@@ -39,7 +41,8 @@ def main():
     # 학습 루프
     episodes = 100
     for episode in range(episodes):
-        state = processed_data.iloc[0:30][['close', 'volume', 'ma7', 'ma14', 'rsi']].values
+        # state를 2D 배열에서 1D 배열로 변경
+        state = processed_data.iloc[30][['close', 'volume', 'ma7', 'ma14', 'rsi']].values.reshape(1, -1)
         action = np.random.randint(0, 3)  # 랜덤 액션 (매수/매도/홀딩)
         
         # 보상 계산 (간단한 예시)
