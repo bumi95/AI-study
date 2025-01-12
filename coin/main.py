@@ -1,7 +1,6 @@
 from trading.binance_trader import BinanceTrader
-from training.model import TradingAgent
+from training.agent import PPOAgent
 import numpy as np
-#import pandas as pd
 
 def calculate_rsi(prices, period=14):
     """RSI(Relative Strength Index) 계산"""
@@ -14,7 +13,6 @@ def calculate_rsi(prices, period=14):
 def preprocess_data(df):
     """데이터 전처리"""
     df = df.copy()
-    # close 컬럼을 float 타입으로 변환
     df['close'] = df['close'].astype(float)
     df['returns'] = df['close'].pct_change()
     df['ma7'] = df['close'].rolling(window=7).mean()
@@ -36,12 +34,12 @@ def main():
     
     # 학습 에이전트 초기화
     state_size = 5  # 종가, 거래량, MA7, MA14, RSI
-    agent = TradingAgent(state_size)
+    action_size = 3  # 매수, 매도, 홀딩
+    agent = PPOAgent(state_size, action_size)
     
     # 학습 루프
     episodes = 100
     for episode in range(episodes):
-        # state를 2D 배열에서 1D 배열로 변경
         state = processed_data.iloc[30][['close', 'volume', 'ma7', 'ma14', 'rsi']].values.reshape(1, -1)
         action = np.random.randint(0, 3)  # 랜덤 액션 (매수/매도/홀딩)
         
@@ -49,8 +47,11 @@ def main():
         next_return = processed_data.iloc[31]['returns']
         reward = next_return if action == 1 else -next_return if action == 0 else 0
         
+        # 다음 상태 준비
+        next_state = processed_data.iloc[31][['close', 'volume', 'ma7', 'ma14', 'rsi']].values.reshape(1, -1)
+        
         # 학습
-        loss = agent.train_step(state, action, reward)
+        loss = agent.train_step(state, action, reward, next_state)
         print(f"Episode {episode}, Loss: {loss:.4f}")
 
 if __name__ == "__main__":
