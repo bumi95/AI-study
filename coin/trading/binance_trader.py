@@ -1,14 +1,18 @@
+from binance import ThreadedWebsocketManager
 from binance.client import Client
 from binance.enums import *
-from binance import ThreadedWebsocketManager
 import pandas as pd
 import time
 
 class BinanceTrader:
     def __init__(self, api_key, api_secret, symbol="BTCUSDT"):
-        self.client = Client(api_key, api_secret)
+        self.client = Client(api_key, api_secret, testnet=True)
         self.symbol = symbol.lower()
-        self.twm = ThreadedWebsocketManager(api_key=api_key, api_secret=api_secret)
+        self.twm = ThreadedWebsocketManager(
+            api_key=api_key,
+            api_secret=api_secret,
+            testnet=True
+        )
         self.current_price = None
         self.last_update_time = None
         self.twm.start()
@@ -16,14 +20,15 @@ class BinanceTrader:
     def start_ticker_socket(self, callback):
         """실시간 선물 틱데이터 수신 시작"""
         def handle_message(msg):
-            if msg.get('e') == 'bookTicker':
-                self.current_price = float(msg['b'])
+            if msg is not None:
+                #print(f"Received message: {msg}")
+                self.current_price = self.get_current_price()
                 self.last_update_time = time.time()
                 if callback:
                     callback(msg)
         
         # 선물 마켓 스트림 사용
-        self.twm.start_symbol_ticker_socket(
+        self.twm.start_kline_futures_socket(
             callback=handle_message,
             symbol=self.symbol
         )
@@ -48,10 +53,10 @@ class BinanceTrader:
             
     def get_current_price(self):
         """선물 현재가 조회"""
-        if self.current_price is None or time.time() - self.last_update_time > 5:
-            ticker = self.client.futures_symbol_ticker(symbol=self.symbol.upper())
-            return float(ticker['price'])
-        return self.current_price
+        #if self.current_price is None or time.time() - self.last_update_time > 5:
+        ticker = self.client.futures_symbol_ticker(symbol=self.symbol.upper())
+        return float(ticker['price'])
+        #return self.current_price
     
     def get_position(self):
         """선물 포지션 조회"""
